@@ -1,5 +1,5 @@
 // GemHunter service worker: the app shell opens instantly and offline; GitHub API calls always go to the network.
-const CACHE = "gemhunter-v2";
+const CACHE = "gemhunter-v3";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "vendor/marked.min.js", "vendor/purify.min.js",
   "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png"];
 

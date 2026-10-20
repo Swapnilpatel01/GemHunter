@@ -182,9 +182,12 @@ async function dispatch(kind, params = {}) {
   const r = await gh(`/repos/${cfg().repo}/actions/workflows/run.yml/dispatches`, {
     method: "POST", body: { ref: cfg().branch, inputs: { kind, run_id: id, params: JSON.stringify(params) } },
   });
-  if (r.status === 404) throw new Error("Couldn't find the run.yml workflow. Check that Actions is enabled in GemHunter-data.");
-  if (r.status === 403) throw new Error("Your GitHub token can't start runs. Give it Actions: Read and write.");
-  if (!r.ok) throw new Error(`GitHub error ${r.status} starting the run`);
+  if (!r.ok) {
+    const msg = (await r.json().catch(() => ({}))).message || "";
+    if (r.status === 404) throw new Error("GitHub couldn't find the run.yml workflow, or the token can't see it. Check Actions is enabled in GemHunter-Data (Settings → Actions → General).");
+    if (r.status === 403) throw new Error(`GitHub won't let this token start runs (${msg || "403"}). Give the token Actions: Read and write.`);
+    throw new Error(`GitHub error ${r.status} starting the run: ${msg}`);
+  }
   saveLocalJobs([{ id, kind, title: KIND_TITLES[kind](params.ticker || ""), created: new Date().toISOString(), done: false }, ...localJobs()]);
   return id;
 }
@@ -341,6 +344,7 @@ function activeJobBanners(jobs) {
 }
 
 async function startDD(ticker, screenContext = "") {
+  toast(`Starting deep DD on ${ticker}…`);
   const id = await dispatch("dd", { ticker, screen_context: screenContext });
   closeSheet();
   location.hash = `#/job/${id}`;
@@ -931,6 +935,12 @@ async function viewSettings() {
 }
 
 /* ---------------- boot ---------------- */
+
+// Any failed action (a button whose request GitHub rejected) shows its reason instead of failing silently.
+addEventListener("unhandledrejection", e => {
+  const msg = e.reason?.message || String(e.reason || "Something went wrong");
+  if (msg !== "Sign in needed") toast(msg, 7000);
+});
 
 (function boot() {
   if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});

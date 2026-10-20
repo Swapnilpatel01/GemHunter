@@ -936,6 +936,17 @@ async function viewSettings() {
 
 /* ---------------- boot ---------------- */
 
+// Block pinch and double-tap zoom (iOS ignores user-scalable=no on its own).
+["gesturestart", "gesturechange", "gestureend"].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
+let lastTouchEnd = 0;
+document.addEventListener("touchend", e => {
+  const now = Date.now();
+  if (now - lastTouchEnd < 300 && !e.target.closest("input, textarea, select")) e.preventDefault();
+  lastTouchEnd = now;
+}, { passive: false });
+document.addEventListener("touchmove", e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+document.addEventListener("contextmenu", e => { if (!e.target.closest(".md, input, textarea")) e.preventDefault(); });
+
 // Any failed action (a button whose request GitHub rejected) shows its reason instead of failing silently.
 addEventListener("unhandledrejection", e => {
   const msg = e.reason?.message || String(e.reason || "Something went wrong");

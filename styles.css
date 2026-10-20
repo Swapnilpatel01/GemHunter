@@ -45,7 +45,13 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--paper); color: var(--ink); }
+/* Native-app feel: no zooming, no text selection or long-press menus on controls,
+   no rubber-band bounce on the page itself. Reading content stays selectable. */
+html, body { overscroll-behavior: none; touch-action: manipulation; }
 body {
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-text-size-adjust: 100%;
   font: 400 16px/1.5 var(--text);
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
@@ -296,3 +302,21 @@ textarea { min-height: 96px; resize: vertical; }
 
 .login { max-width: 420px; margin: 12vh auto 0; }
 .login .gem-lg { margin-bottom: 10px; }
+
+/* Selectable where copying is useful: the write-ups and form fields. */
+.md, .md *, input, textarea, .reasons { -webkit-user-select: text; user-select: text; }
+a, button, img, svg { -webkit-user-drag: none; -webkit-touch-callout: none; }
+
+/* Press feedback like native controls. */
+.btn, .tabbar a, .rowlink, .seg button, .suggest button, .agent summary, .back {
+  transition: transform .08s ease, opacity .08s ease;
+}
+.btn:active, .seg button:active, .suggest button:active, .back:active { transform: scale(.97); opacity: .8; }
+.rowlink:active, .agent summary:active { opacity: .6; }
+.tabbar a:active { opacity: .6; }
+@media (prefers-reduced-motion: reduce) { .btn:active, .seg button:active { transform: none; } }
+
+/* Full-screen app: keep the scroll inside the page, not the window chrome. */
+@media (display-mode: standalone) {
+  .topbar { padding-top: calc(var(--safe-t) + 6px); }
+}

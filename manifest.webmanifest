@@ -1,0 +1,15 @@
+{
+  "name": "GemHunter",
+  "short_name": "GemHunter",
+  "description": "Hidden-gem stock research and Robinhood copilot",
+  "start_url": "./#/gems",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ECEFF2",
+  "theme_color": "#ECEFF2",
+  "icons": [
+    {"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png"},
+    {"src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}

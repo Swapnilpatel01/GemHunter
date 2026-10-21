@@ -53,13 +53,26 @@ function ratingClass(r) {
 const ratingChip = r => (r ? `<span class="rating ${ratingClass(r)}">${esc(r)}</span>` : "");
 const tone = r => ({ "r-buy": "var(--emerald)", "r-hold": "var(--citrine)", "r-avoid": "var(--garnet)" }[ratingClass(r)] || "var(--sapphire)");
 
+/* The three universes the screener covers. Hidden gems keep the original scan file. */
+const UNIVERSES = {
+  gems: { label: "Hidden gems", file: "scans/latest.json", score: "Gem score", cta: "Find hidden gems",
+    blurb: "A scan reads SEC filings for every US stock in your hidden-gem range (default $50M–$10B), ranks them on growth, margins, valuation, insider buying and how little Wall Street covers them, then sends the best few to the research team for full due diligence." },
+  large: { label: "Large caps", file: "scans/latest-large.json", score: "Opportunity score", cta: "Find large-cap ideas",
+    blurb: "Large caps ($10B–$100B by default) are covered by plenty of analysts, so this scan looks for quality and growth at a sensible price: forward P/E against growth, free-cash-flow yield, pullbacks while sales still grow, and rare insider buying." },
+  blue: { label: "Blue chips", file: "scans/latest-blue.json", score: "Opportunity score", cta: "Find blue-chip ideas",
+    blurb: "Blue chips are the profitable giants ($100B and up by default). The scan ranks them on growth, margins, valuation and cash generation, and the research team judges each as a long-term holding: moat, next leg of growth, capital returns, and whether the price already assumes the good news." },
+};
+const tierOf = r => (UNIVERSES[r?.tier] ? r.tier : "gems");
+const RISK_CLASS = { "Lotto play": "r-avoid", "Speculative": "r-hold", "Growth": "r-info", "Core holding": "r-buy", "Defensive": "r-buy" };
+const riskChip = r => (r ? `<span class="rating ${RISK_CLASS[r] || "r-none"}">${esc(r)}</span>` : "");
+
 /* The gem glyph: a cut stone whose body fills with the score, tinted by the rating. */
 let gemId = 0;
 function gem(score, rating, big = false) {
   const id = `g${++gemId}`, s = Math.max(0, Math.min(100, Number(score) || 0));
   const top = 44 - (s / 100) * 36, col = tone(rating);
   const shape = "14,8 34,8 42,18 24,44 6,18";
-  return `<svg class="gem ${big ? "gem-lg" : ""}" viewBox="0 0 48 58" role="img" aria-label="Gem score ${Math.round(s)} of 100">
+  return `<svg class="gem ${big ? "gem-lg" : ""}" viewBox="0 0 48 58" role="img" aria-label="Score ${Math.round(s)} of 100">
     <defs><clipPath id="${id}"><polygon points="${shape}"/></clipPath></defs>
     <polygon points="${shape}" fill="var(--surface)"/>
     <rect clip-path="url(#${id})" x="0" y="${top}" width="48" height="48" fill="${col}" opacity=".85"/>
@@ -172,7 +185,7 @@ async function updateJSON(path, fn, fallback, message) {
   throw new Error(`Couldn't save ${path} — try again.`);
 }
 
-const KIND_TITLES = { dd: t => `Deep DD: ${t}`, scan: () => "Hidden-gem scan", review: () => "Portfolio review", refresh: () => "Refresh prices & filings", ask: () => "Question" };
+const KIND_TITLES = { dd: p => `Deep DD: ${p.ticker}`, scan: p => `${(UNIVERSES[p.universe] || UNIVERSES.gems).label} scan`, review: () => "Portfolio review", refresh: () => "Refresh prices & filings", ask: () => "Question" };
 
 function localJobs() { return JSON.parse(localStorage.getItem("gh_jobs") || "[]"); }
 function saveLocalJobs(list) { localStorage.setItem("gh_jobs", JSON.stringify(list.slice(0, 40))); }
@@ -188,7 +201,7 @@ async function dispatch(kind, params = {}) {
     if (r.status === 403) throw new Error(`GitHub won't let this token start runs (${msg || "403"}). Give the token Actions: Read and write.`);
     throw new Error(`GitHub error ${r.status} starting the run: ${msg}`);
   }
-  saveLocalJobs([{ id, kind, title: KIND_TITLES[kind](params.ticker || ""), created: new Date().toISOString(), done: false }, ...localJobs()]);
+  saveLocalJobs([{ id, kind, universe: params.universe, title: KIND_TITLES[kind](params), created: new Date().toISOString(), done: false }, ...localJobs()]);
   return id;
 }
 
@@ -299,7 +312,7 @@ function showLogin(message = "") {
 /* ---------------- router ---------------- */
 
 const routes = [
-  [/^#\/gems$/, viewGems, "gems"],
+  [/^#\/gems(?:\/(gems|large|blue))?$/, viewGems, "gems"],
   [/^#\/research$/, viewResearch, "research"],
   [/^#\/job\/([\w-]+)$/, viewJob, "research"],
   [/^#\/report\/([\w-]+)$/, viewReport, "research"],
@@ -377,32 +390,35 @@ async function autoRefresh() {
 
 /* ---------------- Gems ---------------- */
 
-async function viewGems() {
-  setTitle("Hidden gems");
-  const [scan, jobs, al] = await Promise.all([readJSON("scans/latest.json", { candidates: [], meta: {} }), activeJobs(), unseenAlerts()]);
+async function viewGems(u) {
+  u = UNIVERSES[u] ? u : (UNIVERSES[localStorage.getItem("gh_universe")] ? localStorage.getItem("gh_universe") : "gems");
+  localStorage.setItem("gh_universe", u);
+  const U = UNIVERSES[u];
+  setTitle(U.label);
+  const [scan, jobs, al] = await Promise.all([readJSON(U.file, { candidates: [], meta: {} }), activeJobs(), unseenAlerts()]);
   const meta = scan.meta || {};
   const cands = scan.candidates || [];
   const alerts = al.unseen ? `<a class="banner warn" href="#/portfolio"><span><b>${al.unseen} new filing alert${al.unseen > 1 ? "s" : ""}</b><br><span class="small">On stocks you own or watch</span></span></a>` : "";
-  const scanning = jobs.some(j => j.kind === "scan");
+  const scanning = jobs.some(j => j.kind === "scan" && (j.universe || "gems") === u);
 
   let body;
   if (!cands.length) {
-    body = `<div class="empty"><h2>No scan yet</h2>
-      <p>A scan reads SEC filings for every US stock between $50M and $10B, ranks them on growth, margins, valuation, insider buying and how little Wall Street covers them, then sends the best few to the research team for full due diligence.</p>
-      <p class="faint">The screen alone takes a few minutes and uses no AI. Each deep DD uses about 15 agent calls on your Claude plan and roughly 10 minutes of GitHub time.</p></div>`;
+    body = `<div class="empty"><h2>No ${U.label.toLowerCase()} scan yet</h2><p>${U.blurb}</p>
+      <p class="faint">The screen alone takes a few minutes and uses no AI. Each deep DD uses about 16 agent calls on your Claude plan and roughly 10 minutes of GitHub time.</p></div>`;
   } else {
     body = `<p class="faint">Scanned ${meta.scored ?? "?"} of ${meta.in_range ?? "?"} stocks in range, latest quarter ${esc(meta.quarter || "")}, ${when(scan.created)}.</p>
       <ul class="list">${cands.map((c, i) => gemRow(c, i)).join("")}</ul>`;
   }
   view.innerHTML = `${alerts}${activeJobBanners(jobs)}
+    <div class="seg" role="tablist" aria-label="Universe">${Object.entries(UNIVERSES).map(([k, x]) => `<a role="tab" href="#/gems/${k}" class="${k === u ? "on" : ""}">${x.label}</a>`).join("")}</div>
     <div class="row-actions">
-      <button class="btn" id="scan" ${scanning ? "disabled" : ""}>${cands.length ? "Run a new scan" : "Find hidden gems"}</button>
+      <button class="btn" id="scan" ${scanning ? "disabled" : ""}>${cands.length ? "Run a new scan" : U.cta}</button>
       <button class="btn quiet" id="screen-only" ${scanning ? "disabled" : ""}>Screen only</button>
     </div>${body}`;
-  $("#scan").onclick = async () => { location.hash = `#/job/${await dispatch("scan", { screen_only: false })}`; };
-  $("#screen-only").onclick = async () => { location.hash = `#/job/${await dispatch("scan", { screen_only: true })}`; };
-  $$("[data-cand]").forEach(el => el.addEventListener("click", () => candidateSheet(cands[+el.dataset.cand])));
-  if (jobs.length) state.pollers.push(setTimeout(() => location.hash === "#/gems" && viewGems(), 20000));
+  $("#scan").onclick = async () => { location.hash = `#/job/${await dispatch("scan", { screen_only: false, universe: u })}`; };
+  $("#screen-only").onclick = async () => { location.hash = `#/job/${await dispatch("scan", { screen_only: true, universe: u })}`; };
+  $$("[data-cand]").forEach(el => el.addEventListener("click", () => candidateSheet(cands[+el.dataset.cand], u)));
+  if (jobs.length) state.pollers.push(setTimeout(() => location.hash.startsWith("#/gems") && viewGems(u), 20000));
 }
 
 function gemRow(c, i) {
@@ -419,8 +435,16 @@ function gemRow(c, i) {
     </div></button></li>`;
 }
 
-function candidateSheet(c) {
-  const rows = [
+function candidateSheet(c, u = "gems") {
+  const big = u !== "gems";
+  const rows = big ? [
+    ["Price", price(c.price)], ["Market cap", money(c.market_cap)], ["Sector", c.sector || "—"],
+    ["Revenue YoY", signedPct(c.rev_yoy)], ["Op. margin", pct(c.op_margin)], ["Gross margin", pct(c.gross_margin)],
+    ["Forward P/E", c.forward_pe ? c.forward_pe.toFixed(1) + "×" : "—"], ["FCF yield", c.fcf_yield != null ? (c.fcf_yield * 100).toFixed(1) + "%" : "—"],
+    ["Dividend yield", c.div_yield != null ? (c.div_yield * 100).toFixed(1) + "%" : "—"],
+    ["Off 52-wk high", c.off_high != null ? signedPct(c.off_high, false) : "—"], ["6-month return", signedPct(c.return_6m, false)],
+    ["Analysts", c.analysts ?? "—"], ["Screen score", c.stage1_score], [UNIVERSES[u].score, c.gem_score],
+  ] : [
     ["Price", price(c.price)], ["Market cap", money(c.market_cap)], ["Sector", c.sector || "—"],
     ["Revenue YoY", signedPct(c.rev_yoy)], ["Growth change", c.rev_accel != null ? `${(c.rev_accel * 100).toFixed(0)} pts` : "—"],
     ["Gross margin", pct(c.gross_margin)], ["Op. margin", pct(c.op_margin)], ["P/S (annualized)", c.ps_annualized ? c.ps_annualized.toFixed(1) + "×" : "—"],
@@ -465,7 +489,7 @@ async function viewResearch() {
     <h2>Due diligence reports</h2>
     ${index.length ? `<ul class="list">${index.slice(0, 80).map(r => `<li><a class="rowlink" href="#/report/${r.id}"><div class="gemrow">
         ${gem(r.gem_score, r.rating)}<div style="min-width:0"><div class="meta"><span class="ticker" style="font-size:20px">${esc(r.ticker)}</span>${ratingChip(r.rating)}</div>
-        <div class="reasons">${esc(r.one_liner || r.name || "")}</div></div>
+        <div class="reasons">${r.risk_profile ? `<b>${esc(r.risk_profile)}.</b> ` : ""}${esc(r.one_liner || r.name || "")}</div></div>
         <div class="right"><span class="faint">${when(r.created)}</span><span class="small">${r.action ? esc(r.action) : ""}</span></div></div></a></li>`).join("")}</ul>`
       : `<p class="muted">No reports yet. Search for a ticker above, or run a scan from Gems.</p>`}
     ${recent.length ? `<h2>Recent runs</h2><ul class="list">${recent.map(j => `<li><a class="rowlink" href="#/job/${j.id}">
@@ -492,7 +516,7 @@ async function viewResearch() {
 async function tickerSheet(t) {
   const past = (await readJSON("reports/index.json", [])).filter(r => r.ticker === t).slice(0, 5);
   const sh = openSheet(`<div class="ticker" style="font-size:36px">${esc(t)}</div>
-    <p class="muted">The research team reads the latest 10-K, 10-Q, 8-Ks, earnings release, insider trades and news, debates it, and writes a full DD. It takes about 10 minutes and roughly 15 agent calls on your Claude plan. You can close the app while it runs.</p>
+    <p class="muted">The research team reads the latest 10-K, 10-Q, 8-Ks, earnings release, insider trades, options and news, debates it, and writes a brief plus a full DD. Small caps are judged as hidden gems, large caps and blue chips on whether the price is right. It takes about 10 minutes and roughly 16 agent calls on your Claude plan. You can close the app while it runs.</p>
     <div class="row-actions"><button class="btn" id="dd">Run deep DD</button>
       <a class="btn rh" href="${robinhood(t)}" target="_blank" rel="noopener">Open in Robinhood</a>
       <button class="btn quiet" id="w">Watch</button>
@@ -507,7 +531,7 @@ async function tickerSheet(t) {
 /* ---------------- Live run: the agent room ---------------- */
 
 const DD_STAGES = [["data", "Gather filings, financials, news"], ["analysts", "Analyst team"], ["debate", "Bull vs bear debate"],
-  ["verdict", "Research manager verdict"], ["risk", "Trader plan and risk debate"], ["decision", "Portfolio manager decision"], ["writeup", "Write the DD"]];
+  ["verdict", "Research manager verdict"], ["risk", "Trader plan and risk debate"], ["decision", "Portfolio manager decision"], ["writeup", "Write the brief and the DD"]];
 
 async function viewJob(id) {
   setTitle("Research run", { back: true });
@@ -545,7 +569,7 @@ function render(j) {
     ${j.kind === "ask" && j.result?.answer ? `<div class="md">${md(j.result.answer)}</div>` : ""}
     <div class="row-actions">
       ${reportId ? `<a class="btn" href="#/report/${reportId}">Read the DD</a>` : ""}
-      ${j.kind === "scan" && j.status === "done" ? `<a class="btn" href="#/gems">See the gems</a>` : ""}
+      ${j.kind === "scan" && j.status === "done" ? `<a class="btn" href="#/gems/${esc(j.result?.universe || j.params?.universe || "gems")}">See the ideas</a>` : ""}
       ${j.kind === "review" && j.status === "done" ? `<a class="btn" href="#/portfolio">See the review</a>` : ""}
       ${running && j.gh_run ? `<button class="btn danger small" id="cancel">Cancel</button>` : ""}
       ${j.log_url ? `<a class="btn ghost small" href="${esc(j.log_url)}" target="_blank" rel="noopener">GitHub log</a>` : ""}
@@ -605,16 +629,20 @@ async function viewReport(id) {
   if (!r) throw new Error("This report isn't in your repo any more.");
   const v = r.verdict || {}, d = r.decision || {}, f = r.facts || {}, m = f.metrics || {}, pt = v.price_targets || {};
   const rating = d.final_rating || v.rating;
+  const tier = tierOf(r), big = tier !== "gems", b = r.brief || {};
+  const hasBrief = !!(b.headline || (b.why_it_could_work || []).length || r.brief_markdown);
+  const opt = f.options || {};
   setTitle(r.name || r.ticker, { back: true });
   const facts = [
     ["Market cap", money(f.market_cap)], ["Revenue YoY", signedPct(m.revenue_yoy_pct, false)], ["Gross margin", m.gross_margin_pct != null ? m.gross_margin_pct + "%" : "—"],
     ["Cash", money(m.cash_and_investments)], ["Analysts", f.analysts ?? "0"], ["Short interest", pct(f.short_pct)],
     ["Insider buys (6 mo)", money(f.insiders?.buy_value, 0)], ["Next earnings", f.next_earnings ? esc(String(f.next_earnings).slice(0, 10)) : "—"], ["Dilution (1 yr)", m.share_count_change_1y_pct != null ? m.share_count_change_1y_pct + "%" : "—"],
+    ["Forward P/E", f.forward_pe ? Number(f.forward_pe).toFixed(1) + "×" : "—"], ["Options", opt.verdict ? esc(opt.verdict) : "—"], ["Size", esc(r.cap_label || "—")],
   ];
   view.innerHTML = `
-    <div class="hero"><div><div class="ticker">${esc(r.ticker)}</div><div class="co">${esc(r.name || "")}${f.sector ? `, ${esc(f.sector)}` : ""}</div>
+    <div class="hero"><div><div class="ticker">${esc(r.ticker)}</div><div class="co">${esc(r.name || "")}${f.sector ? `, ${esc(f.sector)}` : ""}${r.tier ? ` · ${UNIVERSES[tier].label.replace(/s$/, "")}` : ""}</div>
       <div class="price">${price(f.price)} <span class="faint">at research time</span></div></div>${gem(v.gem_score, rating, true)}</div>
-    <div class="verdict">${ratingChip(rating)}${d.action ? `<span class="rating r-none">${esc(d.action)}${d.position_size_pct ? ` ${d.position_size_pct}% of portfolio` : ""}</span>` : ""}
+    <div class="verdict">${ratingChip(rating)}${riskChip(v.risk_profile || b.risk_profile)}${d.action ? `<span class="rating r-none">${esc(d.action)}${d.position_size_pct ? ` ${d.position_size_pct}% of portfolio` : ""}</span>` : ""}
       ${v.conviction ? `<span class="faint">${esc(v.conviction)} conviction</span>` : ""}</div>
     ${v.one_liner ? `<p class="oneliner">${esc(v.one_liner)}</p>` : ""}
     ${targetBar(f.price, pt)}
@@ -625,16 +653,17 @@ async function viewReport(id) {
       <button class="btn ghost" id="rerun">Re-run</button>
     </div>
     <dl class="facts">${facts.map(([k, x]) => `<div><dt>${k}</dt><dd>${x}</dd></div>`).join("")}</dl>
-    <div class="seg" role="tablist">${[["dd", "The DD"], ["thesis", "Thesis"], ["plan", "Plan"], ["debate", "Debate"], ["analysts", "Analysts"], ["data", "Data"]]
+    <div class="seg" role="tablist">${[...(hasBrief ? [["brief", "Brief"]] : []), ["dd", hasBrief ? "Full DD" : "The DD"], ["thesis", "Thesis"], ["plan", "Plan"], ["debate", "Debate"], ["analysts", "Analysts"], ["data", "Data"]]
       .map(([k, l], i) => `<button role="tab" data-tab="${k}" class="${i ? "" : "on"}">${l}</button>`).join("")}</div>
     <div id="tab"></div>
     <p class="faint" style="margin-top:28px">Generated ${esc((r.finished || r.created || "").replace("T", " ").slice(0, 16))} on your Claude plan (${esc(r.models?.quick || "")} / ${esc(r.models?.deep || "")}). Research, not financial advice.</p>
     <button class="btn danger small" id="del">Remove from list</button>`;
 
   const tabs = {
+    brief: () => briefView(b, r.brief_markdown, opt),
     dd: () => `<article class="md">${md(r.dd_markdown)}</article>`,
     thesis: () => `
-      ${v.why_overlooked ? `<h3>Why it's overlooked</h3><p>${esc(v.why_overlooked)}</p>` : ""}
+      ${v.why_overlooked ? `<h3>${big ? "What the market is missing" : "Why it's overlooked"}</h3><p>${esc(v.why_overlooked)}</p>` : ""}
       ${list("Thesis", v.thesis_points)}${list("Key risks", v.key_risks)}
       ${v.catalysts?.length ? `<h3>Catalysts</h3><ul class="list">${v.catalysts.map(c => `<li style="padding:10px 0"><b>${esc(c.timing)}</b> <span class="rating ${c.impact === "high" ? "r-buy" : "r-none"}">${esc(c.impact)} impact</span><br>${esc(c.event)}</li>`).join("")}</ul>` : ""}
       ${list("What would prove it wrong", v.thesis_breakers)}
@@ -662,7 +691,7 @@ async function viewReport(id) {
   };
   const show = k => { $$(".seg button").forEach(b => b.classList.toggle("on", b.dataset.tab === k)); $("#tab").innerHTML = tabs[k](); };
   $$(".seg button").forEach(b => (b.onclick = () => show(b.dataset.tab)));
-  show("dd");
+  show(hasBrief ? "brief" : "dd");
   $("#ask").onclick = () => askSheet({ report_id: r.id || id, title: `Ask about ${r.ticker}` });
   $("#w").onclick = () => watch(r.ticker);
   $("#rerun").onclick = () => startDD(r.ticker);
@@ -671,6 +700,28 @@ async function viewReport(id) {
     await updateJSON("reports/index.json", idx => idx.filter(x => x.id !== id), [], `app: remove report ${id}`);
     location.hash = "#/research";
   };
+}
+
+/* The Brief: proof points with their "so what", the big trend, other legs, the bad stuff in context,
+   a blunt risk call, options liquidity and the plan — the kind of summary a sharp investor posts. */
+function briefView(b, markdown, opt) {
+  if (!b || !(b.headline || (b.why_it_could_work || []).length)) return markdown ? `<article class="md">${md(markdown)}</article>` : "<p class='muted'>No brief for this report.</p>";
+  const sev = { high: "r-avoid", medium: "r-hold", low: "r-none" };
+  const dur = { strong: "r-buy", likely: "r-buy", uncertain: "r-hold", fading: "r-avoid" };
+  const t = b.big_trend || {};
+  return `<div class="brief">
+    ${b.headline ? `<p class="oneliner">${esc(b.headline)}</p>` : ""}
+    ${b.risk_profile || b.risk_call ? `<div class="callout ${RISK_CLASS[b.risk_profile] || "r-none"}">${riskChip(b.risk_profile)} ${esc(b.risk_call || "")}</div>` : ""}
+    ${(b.why_it_could_work || []).length ? `<h3>Why it could work</h3><ul class="points">${b.why_it_could_work.map(x => `<li><b>${esc(x.point)}</b><span>${esc(x.so_what)}</span></li>`).join("")}</ul>` : ""}
+    ${t.trend ? `<h3>The big trend ${t.durability ? `<span class="rating ${dur[t.durability] || "r-none"}">${esc(t.durability)}</span>` : ""}</h3><p>${esc(t.trend)}</p>
+      ${(t.evidence || []).length ? `<ul>${t.evidence.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+      ${t.skeptic_view ? `<p class="small muted"><b>Skeptic's view:</b> ${esc(t.skeptic_view)}</p>` : ""}` : ""}
+    ${(b.other_legs || []).length ? `<h3>Other legs</h3><ul class="points">${b.other_legs.map(x => `<li><b>${esc(x.segment)}</b> ${x.researched === false ? `<span class="rating r-none">not dug into</span>` : ""}<span>${esc(x.note)}</span></li>`).join("")}</ul>` : ""}
+    ${(b.the_bad_stuff || []).length ? `<h3>The bad stuff</h3><ul class="points">${b.the_bad_stuff.map(x => `<li><b>${esc(x.issue)}</b> <span class="rating ${sev[x.severity] || "r-none"}">${esc(x.severity || "")}</span><span>${esc(x.context)}</span></li>`).join("")}</ul>` : ""}
+    ${b.options_note ? `<h3>Options ${opt?.verdict ? `<span class="rating r-none">${esc(opt.verdict)}</span>` : ""}</h3><p>${esc(b.options_note)}</p>
+      ${opt?.open_interest != null ? `<p class="faint">Open interest ${Number(opt.open_interest).toLocaleString()} on the ${esc(opt.expiry_checked || "")} expiry${opt.median_spread_pct_near_money != null ? `, median spread near the money ${opt.median_spread_pct_near_money}%` : ""}.</p>` : ""}` : ""}
+    ${b.plan_line ? `<h3>The plan</h3><p>${esc(b.plan_line)}</p>` : ""}
+  </div>`;
 }
 
 const ANALYST_NAMES = { filings: "Filings analyst", financials: "Financials analyst", earnings: "Earnings call analyst", insiders: "Insider & ownership analyst", news: "News & catalyst analyst", market: "Market & technicals analyst" };
@@ -869,7 +920,7 @@ function importSheet() {
 /* ---------------- Settings ---------------- */
 
 const DEFAULTS = { llm_backend: "claude_code", quick_model: "sonnet", deep_model: "opus", analyst_web_search: true, lite_mode: false,
-  debate_rounds: 2, max_parallel_agents: 3, min_market_cap: 50e6, max_market_cap: 10e9, min_price: 1, min_dollar_volume: 250000,
+  debate_rounds: 2, max_parallel_agents: 3, min_market_cap: 50e6, max_market_cap: 10e9, large_cap_min: 10e9, blue_chip_min: 100e9, min_price: 1, min_dollar_volume: 250000,
   stage2_size: 60, shortlist_size: 5, include_pre_revenue: false, sec_user_agent: "" };
 
 async function viewSettings() {
@@ -895,8 +946,10 @@ async function viewSettings() {
 
     <h2>Screener</h2>
     <div class="grid2">
-      <label class="field"><span>Min market cap ($)</span>${num("min_market_cap")}</label>
-      <label class="field"><span>Max market cap ($)</span>${num("max_market_cap")}</label>
+      <label class="field"><span>Hidden gems from ($)</span>${num("min_market_cap")}</label>
+      <label class="field"><span>Hidden gems up to ($)</span>${num("max_market_cap")}</label>
+      <label class="field"><span>Large caps from ($)</span>${num("large_cap_min")}</label>
+      <label class="field"><span>Blue chips from ($)</span>${num("blue_chip_min")}<small>Large caps run up to this; blue chips must also be profitable</small></label>
       <label class="field"><span>Min share price ($)</span>${num("min_price")}</label>
       <label class="field"><span>Min daily $ volume</span>${num("min_dollar_volume")}</label>
       <label class="field"><span>Stocks to enrich</span>${num("stage2_size", 1)}</label>

@@ -165,6 +165,17 @@ textarea { min-height: 96px; resize: vertical; }
 .r-hold { background: var(--citrine-wash); color: var(--citrine); }
 .r-avoid { background: var(--garnet-wash); color: var(--garnet); }
 .r-none { background: var(--line); color: var(--ink-2); }
+.r-info { background: var(--sapphire-wash); color: var(--sapphire); }
+
+/* Brief */
+.brief h3 { display: flex; gap: 8px; align-items: center; margin-top: 22px; }
+.callout { display: block; padding: 12px 14px; border-radius: 14px; font-weight: 500; line-height: 1.45; margin: 12px 0 4px; color: var(--ink); }
+.callout .rating { margin-right: 4px; }
+.points { list-style: none; margin: 0; padding: 0; }
+.points li { padding: 10px 0 10px 14px; border-left: 3px solid var(--line); margin: 0 0 8px; }
+.points li b { display: inline; font-weight: 600; }
+.points li > span:last-child { display: block; color: var(--ink-2); font-size: 15px; margin-top: 3px; }
+.points li .rating { font-size: 12px; margin-left: 4px; vertical-align: 1px; }
 
 /* ---------- banners ---------- */
 .banner {
@@ -210,8 +221,9 @@ textarea { min-height: 96px; resize: vertical; }
 .seg { display: flex; gap: 4px; overflow-x: auto; margin: 18px -16px 6px; padding: 0 16px; scrollbar-width: none;
   position: sticky; top: calc(var(--safe-t) + 52px); z-index: 5; background: var(--paper); padding-bottom: 8px; padding-top: 6px; }
 .seg::-webkit-scrollbar { display: none; }
-.seg button { border: 0; background: transparent; padding: 7px 13px; border-radius: 999px; font-weight: 600; font-size: 14px; color: var(--ink-2); white-space: nowrap; }
-.seg button.on { background: var(--ink); color: var(--paper); }
+.seg a { text-decoration: none; }
+.seg button, .seg a { border: 0; background: transparent; padding: 7px 13px; border-radius: 999px; font-weight: 600; font-size: 14px; color: var(--ink-2); white-space: nowrap; }
+.seg button.on, .seg a.on { background: var(--ink); color: var(--paper); }
 
 /* ---------- long-form markdown ---------- */
 .md { font-size: 16.5px; line-height: 1.6; overflow-wrap: anywhere; }
@@ -308,7 +320,7 @@ textarea { min-height: 96px; resize: vertical; }
 a, button, img, svg { -webkit-user-drag: none; -webkit-touch-callout: none; }
 
 /* Press feedback like native controls. */
-.btn, .tabbar a, .rowlink, .seg button, .suggest button, .agent summary, .back {
+.btn, .tabbar a, .rowlink, .seg button, .seg a, .suggest button, .agent summary, .back {
   transition: transform .08s ease, opacity .08s ease;
 }
 .btn:active, .seg button:active, .suggest button:active, .back:active { transform: scale(.97); opacity: .8; }
